@@ -1,0 +1,273 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Bubble Shooter</title>
+  <style>
+    body {
+      margin: 0;
+      background: radial-gradient(#1a1a2e, #000);
+      font-family: 'Segoe UI', sans-serif;
+      color: #fff;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+    }
+
+    h1 {
+      color: #e879f9;
+      margin-top: 30px;
+      font-size: 2.5em;
+    }
+
+    .subtitle {
+      margin-bottom: 15px;
+      font-size: 1.1em;
+      color: #aaa;
+    }
+
+    .controls {
+      display: flex;
+      align-items: center;
+      gap: 15px;
+      margin-bottom: 10px;
+    }
+
+    .score {
+      background: rgba(255, 255, 255, 0.1);
+      padding: 8px 16px;
+      border-radius: 8px;
+      font-size: 1em;
+      box-shadow: 0 0 10px #fff3;
+    }
+
+    button {
+      background: #a855f7;
+      border: none;
+      border-radius: 8px;
+      padding: 8px 16px;
+      color: white;
+      font-size: 1em;
+      cursor: pointer;
+      box-shadow: 0 0 10px #a855f7;
+      transition: all 0.3s;
+    }
+
+    button:hover {
+      background: #9333ea;
+      box-shadow: 0 0 20px #a855f7;
+    }
+
+    canvas {
+      border-radius: 16px;
+      background-color: #0a0a23;
+      margin-bottom: 50px;
+    }
+  </style>
+</head>
+<body>
+  <h1>Bubble Shooter</h1>
+  <div class="subtitle">Match 3 or more bubbles to pop them!</div>
+  <div class="controls">
+    <div class="score">Score: <span id="score">0</span></div>
+    <button onclick="startGame()">Start</button>
+    <button onclick="resetGame()">Reset</button>
+  </div>
+  <canvas id="gameCanvas" width="640" height="720"></canvas>
+
+  <script>
+    const canvas = document.getElementById("gameCanvas");
+    const ctx = canvas.getContext("2d");
+
+    const ROWS = 8;
+    const COLS = 12;
+    const RADIUS = 24;
+    const COLORS = [
+      "#ff0000", "#ff7f00", "#ffff00", "#7fff00", "#00ff00",
+      "#00ffbf", "#00ffff", "#007fff", "#0000ff", "#8a2be2", "#ff00ff", "#ff007f"
+    ];
+
+    let grid = [];
+    let shooter = null;
+    let angle = 0;
+    let score = 0;
+
+    class Bubble {
+      constructor(x, y, color) {
+        this.x = x;
+        this.y = y;
+        this.color = color;
+        this.radius = RADIUS;
+        this.dx = 0;
+        this.dy = 0;
+        this.moving = false;
+      }
+
+      draw() {
+        ctx.save();
+        ctx.shadowColor = this.color;
+        ctx.shadowBlur = 25;
+        ctx.beginPath();
+        ctx.fillStyle = this.color;
+        ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
+      }
+
+      move() {
+        if (this.moving) {
+          this.x += this.dx;
+          this.y += this.dy;
+
+          // Bounce off walls
+          if (this.x <= RADIUS || this.x >= canvas.width - RADIUS) {
+            this.dx *= -1;
+          }
+
+          // Collision with ceiling
+          if (this.y <= RADIUS) {
+            this.attach();
+          }
+
+          // Check grid collision
+          for (let row of grid) {
+            for (let b of row) {
+              if (b && distance(this, b) < RADIUS * 2) {
+                this.attach();
+                return;
+              }
+            }
+          }
+        }
+      }
+
+      attach() {
+        this.moving = false;
+        let row = Math.floor(this.y / (RADIUS * 2));
+        let col = Math.floor(this.x / (RADIUS * 2));
+        row = Math.min(ROWS - 1, row);
+        col = Math.min(COLS - 1, col);
+        this.x = col * RADIUS * 2 + RADIUS;
+        this.y = row * RADIUS * 2 + RADIUS;
+        grid[row][col] = this;
+        shooter = spawnShooter();
+        checkMatches();
+      }
+    }
+
+    function distance(b1, b2) {
+      return Math.sqrt((b1.x - b2.x) ** 2 + (b1.y - b2.y) ** 2);
+    }
+
+    function drawGrid() {
+      for (let row of grid) {
+        for (let b of row) {
+          if (b) b.draw();
+        }
+      }
+    }
+
+    function createGrid() {
+      grid = Array.from({ length: ROWS }, (_, r) =>
+        Array.from({ length: COLS }, (_, c) => {
+          if (r < 4) {
+            let x = c * RADIUS * 2 + RADIUS;
+            let y = r * RADIUS * 2 + RADIUS;
+            return new Bubble(x, y, COLORS[Math.floor(Math.random() * COLORS.length)]);
+          } else {
+            return null;
+          }
+        })
+      );
+    }
+
+    function spawnShooter() {
+      return new Bubble(canvas.width / 2, canvas.height - 50, COLORS[Math.floor(Math.random() * COLORS.length)]);
+    }
+
+    function drawShooter() {
+      ctx.save();
+      ctx.strokeStyle = "#fff";
+      ctx.lineWidth = 2;
+      let targetX = canvas.width / 2 + 50 * Math.cos(angle);
+      let targetY = canvas.height - 50 + 50 * Math.sin(angle);
+      ctx.beginPath();
+      ctx.moveTo(canvas.width / 2, canvas.height - 50);
+      ctx.lineTo(targetX, targetY);
+      ctx.stroke();
+      ctx.restore();
+
+      if (shooter) shooter.draw();
+    }
+
+    function gameLoop() {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      drawGrid();
+      drawShooter();
+      if (shooter && shooter.moving) shooter.move();
+      requestAnimationFrame(gameLoop);
+    }
+
+    canvas.addEventListener("mousemove", (e) => {
+      const rect = canvas.getBoundingClientRect();
+      let mouseX = e.clientX - rect.left;
+      let mouseY = e.clientY - rect.top;
+      angle = Math.atan2(mouseY - (canvas.height - 50), mouseX - canvas.width / 2);
+    });
+
+    canvas.addEventListener("click", () => {
+      if (!shooter.moving) {
+        shooter.dx = 6 * Math.cos(angle);
+        shooter.dy = 6 * Math.sin(angle);
+        shooter.moving = true;
+      }
+    });
+
+    function checkMatches() {
+      let visited = Array.from({ length: ROWS }, () => Array(COLS).fill(false));
+
+      function dfs(r, c, color, group) {
+        if (r < 0 || c < 0 || r >= ROWS || c >= COLS) return;
+        if (visited[r][c] || !grid[r][c] || grid[r][c].color !== color) return;
+        visited[r][c] = true;
+        group.push([r, c]);
+        dfs(r - 1, c, color, group);
+        dfs(r + 1, c, color, group);
+        dfs(r, c - 1, color, group);
+        dfs(r, c + 1, color, group);
+      }
+
+      for (let r = 0; r < ROWS; r++) {
+        for (let c = 0; c < COLS; c++) {
+          if (!visited[r][c] && grid[r][c]) {
+            let group = [];
+            dfs(r, c, grid[r][c].color, group);
+            if (group.length >= 3) {
+              for (let [rr, cc] of group) {
+                grid[rr][cc] = null;
+              }
+              score += group.length * 10;
+              document.getElementById("score").textContent = score;
+            }
+          }
+        }
+      }
+    }
+
+    function startGame() {
+      createGrid();
+      shooter = spawnShooter();
+      score = 0;
+      document.getElementById("score").textContent = score;
+    }
+
+    function resetGame() {
+      startGame();
+    }
+
+    // Start game loop
+    gameLoop();
+  </script>
+</body>
+</html>
